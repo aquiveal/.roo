@@ -1,4 +1,4 @@
-# Terraform Naming Conventions
+# OpenTofu Naming Conventions
 
 ## General Rules
 

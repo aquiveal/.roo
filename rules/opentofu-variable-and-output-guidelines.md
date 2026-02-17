@@ -1,4 +1,4 @@
-# Terraform Variable and Output Guidelines
+# OpenTofu Variable and Output Guidelines
 
 ## Variables
 
@@ -27,7 +27,7 @@ variable "environment" {
 }
 ```
 
-### Optional Attributes (Terraform 1.3+)
+### Optional Attributes (OpenTofu 1.6+)
 Use `optional()` in object types for optional fields with defaults.
 
 ```hcl

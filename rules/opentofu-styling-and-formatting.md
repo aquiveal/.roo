@@ -1,9 +1,9 @@
-# Terraform Styling and Formatting
+# OpenTofu Styling and Formatting
 
 ## Formatting Tools
 
-- **`terraform fmt`**: Always run `terraform fmt` to enforce canonical style.
-    - Use in CI pipelines: `terraform fmt -check`.
+- **`tofu fmt`**: Always run `tofu fmt` to enforce canonical style.
+    - Use in CI pipelines: `tofu fmt -check`.
     - Use pre-commit hooks.
 - **`.editorconfig`**: Use an `.editorconfig` file to maintain consistent whitespace and indentation.
 
@@ -43,5 +43,5 @@ resource "aws_instance" "this" {
 
 ## Documentation
 
-- **Tools**: Use `terraform-docs` to automatically generate documentation from your Terraform modules.
+- **Tools**: Use `terraform-docs` to automatically generate documentation from your OpenTofu modules.
 - **Integration**: Use pre-commit hooks to update documentation automatically.
