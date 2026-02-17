@@ -1,13 +1,13 @@
-# Terraform Code Structure
+# OpenTofu Code Structure
 
 ## File Organization
 
-Split your Terraform configurations into logical files:
+Split your OpenTofu configurations into logical files:
 
 - **`main.tf`**: Call modules, locals, and data sources to create all resources.
 - **`variables.tf`**: Contains declarations of variables used in `main.tf`.
 - **`outputs.tf`**: Contains outputs from the resources created in `main.tf`.
-- **`versions.tf`**: Contains version requirements for Terraform and providers.
+- **`versions.tf`**: Contains version requirements for OpenTofu and providers.
 
 ### Restrictions
 - **`terraform.tfvars`**: Do **not** use `terraform.tfvars` inside resource modules. It should only be used in composition (root modules).

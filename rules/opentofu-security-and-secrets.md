@@ -1,8 +1,8 @@
-# Terraform Security and Secrets
+# OpenTofu Security and Secrets
 
 ## Secrets Management
 
-- **NO Secrets in State**: Never store sensitive data (passwords, keys, tokens) in plain text in `terraform.tfvars` or `variables.tf`. Terraform state files are often visible to anyone with access to the backend.
+- **NO Secrets in State**: Never store sensitive data (passwords, keys, tokens) in plain text in `terraform.tfvars` or `variables.tf`. OpenTofu state files are often visible to anyone with access to the backend.
 - **External Data Sources**: Fetch secrets from external sources at runtime using data sources.
     - Examples: AWS Secrets Manager, AWS Systems Manager Parameter Store, HashiCorp Vault.
 
@@ -24,7 +24,7 @@ data "aws_secretsmanager_secret_version" "db_password" {
 # Use the secret
 resource "aws_db_instance" "example" {
   # ...
-  # Terraform uses the value but doesn't hardcode it in config
+  # OpenTofu uses the value but doesn't hardcode it in config
   password = data.aws_secretsmanager_secret_version.db_password.secret_string
 }
 ```

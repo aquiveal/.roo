@@ -1,4 +1,4 @@
-# Terraform Module Modification Policy
+# OpenTofu Module Modification Policy
 
 ## General Rule
 

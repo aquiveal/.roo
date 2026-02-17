@@ -1,4 +1,4 @@
-# General Terraform Best Practices
+# General OpenTofu Best Practices
 
 ## Explicit Dependencies
 Use `locals` to calculate logic and explicit dependency hints, especially when conditional logic is complex.
@@ -15,12 +15,12 @@ resource "aws_vpc" "this" {
 ```
 
 ## Versioning
-- **Pin Versions**: Always pin Terraform and provider versions in `versions.tf` to avoid breaking changes.
+- **Pin Versions**: Always pin OpenTofu and provider versions in `versions.tf` to avoid breaking changes.
 - **Lock File**: Commit `.terraform.lock.hcl` to version control.
 
 ```hcl
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.6"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -36,4 +36,4 @@ terraform {
 
 ## CI/CD
 - **Automation**: Use CI/CD for applying changes.
-- **Pre-commit**: Use `pre-commit-terraform` to lint, format, and document code before it reaches the repo.
+- **Pre-commit**: Use `pre-commit-opentofu` to lint, format, and document code before it reaches the repo.
