@@ -100,7 +100,7 @@ def ensure_ignored(path_rel):
     with open(gitignore_path, 'w') as f:
         f.writelines(lines)
 
-def create_symlink(src_str, dst_str, is_elevated=False):
+def create_symlink(src_str, dst_str, is_elevated=False, is_update=False):
     source_path = Path(src_str).resolve()
     dest_path = Path(dst_str).absolute()
 
@@ -130,8 +130,11 @@ def create_symlink(src_str, dst_str, is_elevated=False):
         os.symlink(local_target, dest_path, target_is_directory=is_dir)
         logger.info(f"Created local OS-specific symlink: {dst_str} -> {local_target}")
         
+        # If we are just updating existing submodules, skip config generation entirely
+        if is_update:
+            return
+            
         # Save to .roomodules using forward slashes (git style)
-        git_target = relative_target.replace('\\', '/')
         config = load_modules()
         
         # Store metadata
@@ -140,11 +143,25 @@ def create_symlink(src_str, dst_str, is_elevated=False):
         try:
             repo_root = Path.cwd()
             dst_rel = dest_path.relative_to(repo_root).as_posix()
-            src_rel = source_path.relative_to(repo_root).as_posix()
         except ValueError:
-            # Fallback if paths are outside cwd
             dst_rel = dest_path.as_posix()
-            src_rel = source_path.as_posix()
+            
+        # Determine if source should be absolute or relative in the URL
+        original_src_path = Path(src_str)
+        if original_src_path.is_absolute():
+            # If they provided an absolute path, store it absolute
+            src_url_path = source_path.as_posix()
+            # Absolute file URI format varies slightly, we'll prefix it if it doesn't start with / (like on windows C:/)
+            if not src_url_path.startswith('/'):
+                src_url_path = '/' + src_url_path
+        else:
+            # If they provided a relative path, calculate it relative to repo root
+            try:
+                src_url_path = source_path.relative_to(repo_root).as_posix()
+            except ValueError:
+                # If it's a relative path that escapes the repo (like ../../outside_repo)
+                # Calculate relative path from repo root manually
+                src_url_path = os.path.relpath(source_path, repo_root).replace('\\', '/')
             
         # Ensure the destination symlink is ignored by Git
         ensure_ignored(dst_rel)
@@ -154,9 +171,20 @@ def create_symlink(src_str, dst_str, is_elevated=False):
             config.add_section(section_name)
             
         config.set(section_name, 'path', dst_rel)
-        config.set(section_name, 'source', src_rel)
-        config.set(section_name, 'relative_target', git_target)
-        config.set(section_name, 'type', "directory" if is_dir else "file")
+        
+        # Use file:/// format. If src_url_path is relative (e.g. docs/api), it becomes file:///docs/api
+        # If absolute on windows (e.g. /C:/docs), it becomes file:///C:/docs
+        # If relative outside repo (e.g. ../docs), it becomes file:///../docs
+        # Ensure directories end with / to make inference robust
+        if is_dir and not src_url_path.endswith('/'):
+            src_url_path += '/'
+            
+        if src_url_path.startswith('/'):
+            config.set(section_name, 'url', f"file://{src_url_path}")
+        else:
+            config.set(section_name, 'url', f"file:///{src_url_path}")
+        
+        # Explicitly omit type and let update command dynamically resolve it based on extension
         
         save_modules(config)
         
@@ -269,10 +297,7 @@ def handle_add(src, dst, is_elevated):
         # Ensure the destination folder is ignored by Git
         ensure_ignored(dst_rel)
             
-        # extract submodule name, default to the last part of destination
-        submodule_name = dst_rel.split('/')[-1] if '/' in dst_rel else dst_rel
-            
-        section_name = f'submodule "{submodule_name}"'
+        section_name = f'submodule "{dst_rel}"'
         if not config.has_section(section_name):
             config.add_section(section_name)
             
@@ -302,29 +327,45 @@ def handle_submodule_update(is_elevated):
             logger.warning(f"Skipping {section}: No path specified")
             continue
             
-        module_type = config.get(section, 'type', fallback=None)
-        
-        if module_type == "remote_folder" or config.has_option(section, 'url'):
-            source_url = config.get(section, 'url', fallback=None)
-            if not source_url:
-                logger.warning(f"Skipping {section}: No url specified")
-                continue
+        source_url = config.get(section, 'url', fallback=None)
+        if not source_url:
+            logger.warning(f"Skipping {section}: No url specified")
+            continue
             
+        if is_github_url(source_url):
             logger.info(f"Processing remote folder: {dst_rel}")
             download_github_folder(source_url, dst_rel)
-            continue
+        elif source_url.startswith("file://"):
+            # Local symlink using the file:// prefix
+            # Parse whether it is an absolute URI (file:///C:/... or file:////home/...) 
+            # or relative URI (file:///docs/... or file:///../docs/...)
             
-        src_rel = config.get(section, 'source', fallback=None)
-        if not src_rel:
-            logger.warning(f"Skipping {section}: No source specified for local symlink")
-            continue
+            # Remove file:// prefix
+            src_uri_path = source_url[len("file://"):]
             
-        src_path = repo_root / src_rel
-        dst_path = repo_root / dst_rel
-        
-        logger.info(f"Processing local symlink: {dst_rel}")
-        create_symlink(str(src_path), str(dst_path), is_elevated)
-    
+            # If it starts with a slash, it might be an absolute path (on Mac/Linux /home/... or Windows /C:/...)
+            # or it might be a relative path attached to file:/// like file:///../docs
+            # Let's cleanly separate the 3rd slash
+            if src_uri_path.startswith('/'):
+                src_uri_path = src_uri_path[1:]
+                
+            # Check if it's an absolute path on Windows (e.g., C:/...) or absolute on Unix (starts with / after the first 3 slashes)
+            if re.match(r"^[A-Za-z]:/", src_uri_path) or src_uri_path.startswith('/'):
+                src_path = Path(src_uri_path)
+            else:
+                # It's a relative path, so resolve it relative to repo_root
+                src_path = repo_root / src_uri_path
+                
+            dst_path = repo_root / dst_rel
+            
+            # Try to infer it based on file extension
+            is_dir = not dst_rel.split('/')[-1].count('.') > 0
+            
+            logger.info(f"Processing local symlink: {dst_rel} -> {src_path}")
+            create_symlink(str(src_path), str(dst_path), is_elevated, is_update=True)
+        else:
+            logger.warning(f"Skipping {section}: Unrecognized url format '{source_url}'")
+            
     logger.info("Submodule update complete.")
 
 def main():
