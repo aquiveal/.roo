@@ -61,6 +61,45 @@ def save_modules(config):
                 f.write(f'\t{key} = {value}\n')
     logger.info(f"Updated {ROOMODULES_FILE}")
 
+def ensure_ignored(path_rel):
+    """Ensure a given relative path is in .gitignore under '# Roo Code Modules'."""
+    gitignore_path = Path(".gitignore")
+    path_to_ignore = path_rel.replace('\\', '/')
+    header = "# Roo Code Modules"
+    
+    lines = []
+    if gitignore_path.exists():
+        with open(gitignore_path, 'r') as f:
+            lines = f.readlines()
+            
+    # Check if already ignored anywhere
+    for line in lines:
+        if line.strip() == path_to_ignore:
+            return # Already ignored
+            
+    logger.info(f"Adding '{path_to_ignore}' to .gitignore")
+    
+    header_idx = -1
+    for i, line in enumerate(lines):
+        if line.strip() == header:
+            header_idx = i
+            break
+            
+    if header_idx != -1:
+        # Header exists, insert right after it
+        lines.insert(header_idx + 1, f"{path_to_ignore}\n")
+    else:
+        # Header doesn't exist, append it and the path to the end
+        if lines and not lines[-1].endswith('\n'):
+            lines[-1] += '\n'
+        if lines:
+            lines.append('\n')
+        lines.append(f"{header}\n")
+        lines.append(f"{path_to_ignore}\n")
+        
+    with open(gitignore_path, 'w') as f:
+        f.writelines(lines)
+
 def create_symlink(src_str, dst_str, is_elevated=False):
     source_path = Path(src_str).resolve()
     dest_path = Path(dst_str).absolute()
@@ -106,6 +145,9 @@ def create_symlink(src_str, dst_str, is_elevated=False):
             # Fallback if paths are outside cwd
             dst_rel = dest_path.as_posix()
             src_rel = source_path.as_posix()
+            
+        # Ensure the destination symlink is ignored by Git
+        ensure_ignored(dst_rel)
             
         section_name = f'submodule "{dst_rel}"'
         if not config.has_section(section_name):
@@ -223,6 +265,9 @@ def handle_add(src, dst, is_elevated):
             dst_rel = Path(dst).resolve().relative_to(repo_root).as_posix()
         except ValueError:
             dst_rel = Path(dst).resolve().as_posix()
+            
+        # Ensure the destination folder is ignored by Git
+        ensure_ignored(dst_rel)
             
         # extract submodule name, default to the last part of destination
         submodule_name = dst_rel.split('/')[-1] if '/' in dst_rel else dst_rel
