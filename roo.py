@@ -62,10 +62,10 @@ def save_modules(config):
     logger.info(f"Updated {ROOMODULES_FILE}")
 
 def ensure_ignored(path_rel):
-    """Ensure a given relative path is in .gitignore under '# Roo Code Modules'."""
+    """Ensure a given relative path is in .gitignore under '# Roo Modules'."""
     gitignore_path = Path(".gitignore")
     path_to_ignore = path_rel.replace('\\', '/')
-    header = "# Roo Code Modules"
+    header = "# Roo Modules"
     
     lines = []
     if gitignore_path.exists():
