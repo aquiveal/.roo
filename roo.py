@@ -284,28 +284,53 @@ def handle_add(src, dst, is_elevated):
         sys.exit(1)
         
     if is_github_url(src):
-        download_github_folder(src, dst)
-        
-        # Save remote metadata
-        config = load_modules()
-        try:
-            repo_root = Path.cwd()
-            dst_rel = Path(dst).resolve().relative_to(repo_root).as_posix()
-        except ValueError:
-            dst_rel = Path(dst).resolve().as_posix()
+        if re.match(r"https?://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)", src):
+            download_github_folder(src, dst)
             
-        # Ensure the destination folder is ignored by Git
-        ensure_ignored(dst_rel)
+            # Save remote metadata
+            config = load_modules()
+            try:
+                repo_root = Path.cwd()
+                dst_rel = Path(dst).resolve().relative_to(repo_root).as_posix()
+            except ValueError:
+                dst_rel = Path(dst).resolve().as_posix()
+                
+            # Ensure the destination folder is ignored by Git
+            ensure_ignored(dst_rel)
+                
+            section_name = f'submodule "{dst_rel}"'
+            if not config.has_section(section_name):
+                config.add_section(section_name)
+                
+            config.set(section_name, 'path', dst_rel)
+            config.set(section_name, 'url', src)
             
-        section_name = f'submodule "{dst_rel}"'
-        if not config.has_section(section_name):
-            config.add_section(section_name)
-            
-        config.set(section_name, 'path', dst_rel)
-        config.set(section_name, 'url', src)
-        config.set(section_name, 'type', 'remote_folder')
-        
-        save_modules(config)
+            save_modules(config)
+        else:
+            logger.info(f"Adding full repository as git submodule: {src} -> {dst}")
+            try:
+                subprocess.run(["git", "submodule", "add", "--force", src, dst], check=True)
+                logger.info(f"Successfully added git submodule: {dst}")
+                
+                # Save remote metadata to .roomodules as well
+                config = load_modules()
+                try:
+                    repo_root = Path.cwd()
+                    dst_rel = Path(dst).resolve().relative_to(repo_root).as_posix()
+                except ValueError:
+                    dst_rel = Path(dst).resolve().as_posix()
+                    
+                section_name = f'submodule "{dst_rel}"'
+                if not config.has_section(section_name):
+                    config.add_section(section_name)
+                    
+                config.set(section_name, 'path', dst_rel)
+                config.set(section_name, 'url', src)
+                
+                save_modules(config)
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to add git submodule: {e}")
+                sys.exit(1)
     else:
         create_symlink(src, dst, is_elevated)
 
@@ -333,8 +358,15 @@ def handle_submodule_update(is_elevated):
             continue
             
         if is_github_url(source_url):
-            logger.info(f"Processing remote folder: {dst_rel}")
-            download_github_folder(source_url, dst_rel)
+            if re.match(r"https?://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)", source_url):
+                logger.info(f"Processing remote folder: {dst_rel}")
+                download_github_folder(source_url, dst_rel)
+            else:
+                logger.info(f"Processing full git submodule: {dst_rel}")
+                try:
+                    subprocess.run(["git", "submodule", "update", "--init", "--recursive", dst_rel], check=True)
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"Failed to update git submodule {dst_rel}: {e}")
         elif source_url.startswith("file://"):
             # Local symlink using the file:// prefix
             # Parse whether it is an absolute URI (file:///C:/... or file:////home/...) 
