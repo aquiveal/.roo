@@ -1,0 +1,3 @@
+[submodule "rules/terraform/terraform-best-practices"]
+	path = rules/terraform/terraform-best-practices
+	url = https://github.com/antonbabenko/terraform-best-practices
