@@ -400,6 +400,22 @@ def handle_submodule_update(is_elevated):
             
     logger.info("Submodule update complete.")
 
+def get_git_root():
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--show-toplevel'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return Path(result.stdout.strip()).resolve()
+    except subprocess.CalledProcessError:
+        logger.error("Error: Not inside a git repository.")
+        sys.exit(1)
+    except FileNotFoundError:
+        logger.error("Error: git command not found.")
+        sys.exit(1)
+
 def main():
     is_elevated = "--elevated" in sys.argv
     if is_elevated:
@@ -423,8 +439,33 @@ def main():
     args = parser.parse_args()
 
     if args.command == "submodule":
+        original_cwd = Path.cwd()
+        git_root = get_git_root()
+        os.chdir(git_root)
+        logger.info(f"Operating from git repository root: {git_root}")
+
         if args.action == "add":
-            handle_add(args.src, args.dst, is_elevated)
+            src = args.src
+            dst = args.dst
+            
+            if not is_github_url(src):
+                src_path = Path(src)
+                if not src_path.is_absolute():
+                    src_abs = (original_cwd / src).resolve()
+                    try:
+                        src = os.path.relpath(src_abs, git_root).replace('\\', '/')
+                    except ValueError:
+                        src = str(src_abs).replace('\\', '/')
+                        
+            dst_path = Path(dst)
+            if not dst_path.is_absolute():
+                dst_abs = (original_cwd / dst).resolve()
+                try:
+                    dst = os.path.relpath(dst_abs, git_root).replace('\\', '/')
+                except ValueError:
+                    dst = str(dst_abs).replace('\\', '/')
+
+            handle_add(src, dst, is_elevated)
         elif args.action == "update":
             handle_submodule_update(is_elevated)
         
