@@ -1,59 +1,162 @@
-# TypeScript Unsoundness and `any` Type Rules
+# @Domain
+Trigger these rules when writing, reviewing, refactoring, or debugging TypeScript code. Specifically activate when handling dynamic or un-typed data (e.g., API responses, parsed JSON), resolving compiler type errors, monkey-patching global variables or DOM elements, mitigating unsafe type assertions, or mitigating strictness configurations (like `noImplicitAny`).
 
-These rules apply when writing, reviewing, or refactoring TypeScript code, specifically focusing on type safety, mitigating unsoundness, and managing the `any` and `unknown` types. Use these rules to prevent the unchecked spread of dynamic types and to enforce strict static analysis boundaries.
+# @Vocabulary
+- **Unsoundness**: A state where a symbol's static type assigned by the TypeScript compiler does not match its actual value at runtime, leading to uncaught runtime exceptions.
+- **Top Type**: A type that sits at the top of the type hierarchy; every type is assignable to it (e.g., `unknown`).
+- **Bottom Type**: A type with an empty domain; no values are assignable to it (e.g., `never`).
+- **any**: A dangerous type that effectively disables the type checker. It is paradoxically both a supertype and a subtype of all other types.
+- **unknown**: A type-safe alternative to `any`. It is a top type that requires explicit narrowing (via type guards or assertions) before its properties can be accessed or called.
+- **Type Assertion**: A type-level construct (using the `as` keyword) that overrides the compiler's inferred type, forcing the compiler to trust the developer.
+- **Double Assertion**: Casting a value to `unknown` and then to a target type (e.g., `value as unknown as Target`) to bypass overlapping type constraints.
+- **Monkey Patching**: The practice of attaching arbitrary data or methods to built-in runtime objects (like `window`, `document`, or `RegExp.prototype`) at runtime.
+- **Bivariance**: A soundness trap in TypeScript where method parameters in class hierarchies accept both supertypes and subtypes, potentially masking hierarchy mismatch errors.
+- **Type Coverage**: The percentage of symbols in a codebase that have a statically analyzed type other than `any`.
 
-## @Role
-You are an expert TypeScript Type Safety Engineer. Your primary directive is to eliminate unsound type behaviors, aggressively restrict the usage of the `any` type, and design robust, type-safe boundaries for dynamic or untyped runtime data. 
+# @Objectives
+- Ruthlessly minimize the presence and scope of `any` to prevent contagious loss of type safety across the codebase.
+- Prefer `unknown` over `any` when dealing with data of an unspecified shape, forcing consumers to validate or narrow the data.
+- Isolate and hide unavoidable type assertions within the implementation details of strictly typed function boundaries.
+- Avoid runtime crashes caused by TypeScript soundness traps (e.g., mutating function parameters, assuming array bounds are safe, or trusting that function calls preserve type refinements).
+- Utilize type-safe mechanisms (like interface augmentation) instead of `any` when augmenting global or external environments.
 
-## @Objectives
-*   **Contain the `any` Type:** Prevent `any` from leaking across function boundaries or polluting the broader codebase.
-*   **Enforce Soundness:** Ensure that static types accurately reflect runtime realities by avoiding common soundness traps (e.g., mutable parameters, unchecked array access).
-*   **Maximize Precision:** Replace broad dynamic types with the narrowest, most precise alternatives available.
-*   **Encapsulate Unsafe Code:** Hide necessary type assertions (`as`) and unsafe logic within well-typed function boundaries so public APIs remain safe.
+# @Guidelines
+- **Narrow the Scope of `any`**: 
+  - Never return an `any` type from a function, as it silently destroys type safety for all downstream callers.
+  - Apply `any` using inline type assertions (e.g., `param as any`) rather than assigning it to variable declarations (`const x: any`). 
+  - When suppressing an error within a large object literal, cast only the offending property to `any`, not the entire object.
+- **Use Precise Variants of `any`**:
+  - When the general structure is known but the exact type is not, use structural variants: prefer `any[]` or `unknown[]` for arrays, `{[key: string]: any}` or `Record<string, any>` for objects, and `(...args: any[]) => any` for functions.
+- **Handle Unknown Data with `unknown`**:
+  - Always type parsed dynamic data (like `JSON.parse` or YAML parsers) as `unknown`.
+  - Understand the distinct nuances: use `unknown` for any value, `object` for any non-primitive type, and `{}` for any value except `null` and `undefined`.
+- **Hide Unsafe Type Assertions**:
+  - Do not compromise a public function's return type signature just to satisfy internal compiler errors. 
+  - Hide `as Type` assertions, double assertions (`as unknown as Type`), or `@ts-expect-error` directives inside the function body so the consumer relies on a safe, strictly-typed API.
+- **Prefer `@ts-expect-error` over `@ts-ignore`**:
+  - When forced to suppress a compiler error, use `@ts-expect-error` so the compiler alerts you if the underlying issue is fixed in the future.
+- **Type-Safe Monkey Patching**:
+  - Never use `(window as any).prop = value`.
+  - Prefer `declare global { interface Window { prop: Type; } }` (Module Augmentation) to add global properties safely.
+  - Alternatively, create a narrowed local intersection type: `type MyWindow = typeof window & { prop: Type | undefined };`. Account for `undefined` if the property is populated at runtime to avoid race conditions.
+- **Avoid Soundness Traps**:
+  - **Mutation Variance**: Never mutate function parameters. Explicitly mark object and array parameters as `readonly` or `Readonly<T>` to prevent unsound array/object assignments.
+  - **Refinement Invalidation**: Assume that passing an object to a function might mutate it, thereby invalidating any previous type refinements (e.g., `if (obj.prop)`).
+  - **Class Hierarchy Signatures**: Ensure child class methods match parent class method signatures exactly. TypeScript's method bivariance will not catch narrowed parameter types in child methods.
+  - **Indexed Access**: Treat object and array lookups with caution. Recognize that accessing `arr[3]` or `obj['key']` might return `undefined` at runtime, even if the type checker implies a strict type.
+- **Track Type Coverage**: Use tools like `type-coverage` to continuously monitor the codebase and actively eradicate leaked explicit or third-party `any` types.
 
-## @Constraints & Guidelines
+# @Workflow
+1. **Analyze Context**: When addressing a type error or declaring a new data structure, determine if the data shape is fully known.
+2. **Select Top Type**: If parsing external data or writing generic wrappers, initially assign the `unknown` type instead of `any`.
+3. **Refine Type (If necessary)**: If a specific operation requires escaping the type system, determine the narrowest possible representation (e.g., `any[]` instead of `any`).
+4. **Isolate Unsafe Code**: Push the unsafe assertion or suppression into the smallest possible block (an inline cast or isolated object property).
+5. **Protect the Boundary**: Wrap the logic inside a function. Explicitly declare the function's parameter types and return type. Do not let `any` leak into the return type.
+6. **Verify Soundness**: Check the implementation for accidental mutation of parameters, unsafe array lookups without null checks, or invalid refinements. Apply `readonly` where mutation is not intended.
+7. **Document Deviations**: If a type assertion is entirely unavoidable, leave a comment explaining why the assertion is mathematically or logically sound.
 
-### 1. The `any` Type Restrictions
-*   **Never return `any`.** Functions must NEVER have a return type of `any`. If the return type is truly dynamic, return `unknown`.
-*   **Scope `any` strictly.** If `any` must be used, confine it to the smallest possible scope. Prefer inline casting (`fn(var as any)`) over assigning `any` to a variable (`const x: any = var;`).
-*   **Target specific properties.** If an object is missing a type definition for a specific key, cast only that property (e.g., `config.key = value as any`), not the entire object.
-*   **Use precise variants.** Never use a plain `any` if a more specific variant applies. 
-    *   For arrays: use `any[]` or `unknown[]`.
-    *   For objects: use `Record<string, any>` or `{[key: string]: any}`.
-    *   For functions: use `(...args: any[]) => any`.
+# @Examples (Do's and Don'ts)
 
-### 2. Prefer `unknown` over `any`
-*   **Default to `unknown`.** Use `unknown` for values whose type is not known at compile time (e.g., parsing JSON/YAML, untyped API responses).
-*   **Force User Narrowing.** Require the caller to narrow the `unknown` type using type assertions (`as`), `instanceof` checks, or user-defined type guards (`is`).
-*   **Avoid return-only generics.** Do not use generic type parameters purely for casting return values (e.g., `function parse<T>(input: string): T`). Return `unknown` and force the caller to explicitly assert the type.
+**Scope of `any`**
+- [DO]:
+  ```typescript
+  function eatDinner() {
+    const pizza = getPizza();
+    eatSalad(pizza as any); // Scoped to just this argument
+    pizza.slice(); // Still strictly typed as Pizza
+  }
+  ```
+- [DON'T]:
+  ```typescript
+  function eatDinner() {
+    const pizza: any = getPizza(); // Contagious
+    eatSalad(pizza);
+    pizza.slice(); // Unchecked at compile time
+  }
+  ```
 
-### 3. Hide Unsafe Assertions
-*   **Prioritize public signatures.** Do not compromise a function's public type signature just to make the internal implementation pass the type checker without assertions.
-*   **Encapsulate assertions.** If a type assertion is necessary, hide it inside the function body so the caller does not have to deal with it.
-*   **Document assertions.** Every unsafe type assertion (`as Type`) must be accompanied by a comment explaining *why* it is valid at runtime.
+**Returning `any`**
+- [DO]:
+  ```typescript
+  function parseData(input: string): unknown {
+    return JSON.parse(input);
+  }
+  ```
+- [DON'T]:
+  ```typescript
+  function parseData(input: string): any {
+    return JSON.parse(input); // Leaks `any` to all callers
+  }
+  ```
 
-### 4. Avoid Soundness Traps
-*   **Do not mutate parameters.** Mutating function parameters can break type refinements. Always treat function parameters as `readonly`.
-*   **Use safe monkey patching.** If attaching data to globals (like `window` or `document`), do NOT use `as any`. Instead, use module/interface augmentation (`declare global { interface Window { ... } }`) or cast to a custom local interface (`(window as MyWindow).customProp`).
-*   **Be wary of array/index lookups.** Treat array lookups as potentially `undefined`. If strict bounds checking is needed, explicitly add `| undefined` to indexed types or recommend the `noUncheckedIndexedAccess` compiler option.
-*   **Match class hierarchies.** Ensure child class methods exactly match the signatures of their parent class methods to avoid bivariance traps.
+**Precise Variants of `any`**
+- [DO]:
+  ```typescript
+  function getLength(arr: any[]) {
+    return arr.length; // Returns `number`, safe array operations
+  }
+  ```
+- [DON'T]:
+  ```typescript
+  function getLength(arr: any) {
+    return arr.length; // Returns `any`, accepts non-arrays like `/regex/`
+  }
+  ```
 
-### 5. Error Suppression
-*   **Prefer `@ts-expect-error`.** If a compiler error must be suppressed, use `@ts-expect-error` instead of `@ts-ignore`. This ensures the suppression is removed if the underlying type issue is ever fixed.
+**Hiding Unsafe Assertions**
+- [DO]:
+  ```typescript
+  async function fetchPeak(id: string): Promise<MountainPeak> {
+    const response = await fetch(`/api/${id}`);
+    // Hide the assertion inside the well-typed boundary
+    return response.json() as Promise<MountainPeak>; 
+  }
+  ```
+- [DON'T]:
+  ```typescript
+  // Changing the signature to `Promise<any>` or `Promise<unknown>` forces the consumer to cast
+  async function fetchPeak(id: string): Promise<any> {
+    const response = await fetch(`/api/${id}`);
+    return response.json(); 
+  }
+  ```
 
-## @Workflow
-When generating or refactoring TypeScript code involving dynamic data or type errors, follow these steps:
+**Monkey Patching**
+- [DO]:
+  ```typescript
+  declare global {
+    interface Window {
+      myCustomData: UserData | undefined;
+    }
+  }
+  window.myCustomData = { name: 'Alice' };
+  ```
+- [DON'T]:
+  ```typescript
+  (window as any).myCustomData = { name: 'Alice' };
+  ```
 
-1.  **Analyze the Data Source:** Determine if the type is truly unknowable at compile time (e.g., third-party untyped API, `JSON.parse`).
-2.  **Apply the Safest Type:** 
-    *   Default the parameter or return value to `unknown`. 
-    *   If `unknown` cannot be used due to library constraints, step down to a precise `any` (e.g., `any[]`).
-    *   Only use plain `any` as an absolute last resort.
-3.  **Encapsulate and Assert:** 
-    *   Write a safe public function signature.
-    *   Inside the function, apply runtime validation or user-defined type guards.
-    *   Apply the necessary `as` assertions internally, leaving a comment explaining the runtime guarantee.
-4.  **Validate Soundness Boundaries:** 
-    *   Check that the function does not mutate its parameters.
-    *   Ensure the function does not return an `any` type that could contagiously disable type-checking in the caller's scope.
-5.  **Refactor Globals:** If the code accesses un-typed globals, generate a proper `declare global` augmentation block rather than wrapping the global in `any`.
+**Double Assertions**
+- [DO]:
+  ```typescript
+  const target = source as unknown as TargetType;
+  ```
+- [DON'T]:
+  ```typescript
+  const target = source as any as TargetType;
+  ```
+
+**Avoiding Soundness Traps (Mutation Variance)**
+- [DO]:
+  ```typescript
+  function processAnimals(animals: readonly Animal[]) {
+    // Cannot mutate `animals`, preventing invalid covariance states
+  }
+  ```
+- [DON'T]:
+  ```typescript
+  function processAnimals(animals: Animal[]) {
+    // Array mutation can insert a Fox into a Hen[] at runtime without static errors
+    animals.push(new Fox());
+  }
+  ```

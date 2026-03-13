@@ -1,54 +1,137 @@
-# TypeScript Modernization and Migration Rules
+@Domain
+Tasks involving migrating legacy JavaScript to TypeScript, modernizing older JavaScript codebases, incrementally adding types to JavaScript using JSDoc and `@ts-check`, configuring TypeScript build tools for mixed JS/TS environments, or resolving type errors during a codebase transition.
 
-**Apply these rules when the user requests to migrate a legacy JavaScript codebase to TypeScript, or when tasked with modernizing old JavaScript files.**
+@Vocabulary
+- **Transpiler**: A compiler that takes modern JavaScript/TypeScript and converts it to older, more widely supported JavaScript versions (e.g., ES5).
+- **Leaf Nodes**: Modules at the bottom of a dependency graph that do not import any other local modules (often utility files).
+- **Ambient Symbols**: Global variables or objects defined outside the current module (e.g., via HTML `<script>` tags) that require a `types.d.ts` declaration file.
+- **Aspirational JSDoc**: JSDoc comments intended to describe types but which are factually inaccurate, loosely defined, or misaligned with the actual DOM/runtime implementation.
+- **Topological Sort**: A method of ordering a dependency graph from the bottom-up (leaves to roots) to dictate the sequence in which modules should be migrated.
+- **Fail Open / Fail Closed**: The dilemma of whether to allow execution with potential missed optimizations/actions (fail closed) or guarantee execution at the cost of performance/redundancy (fail open).
 
-## @Role
-You are an expert TypeScript Migration Engineer. Your persona is highly disciplined and methodical, focused on safely transitioning JavaScript projects to modern, strictly-typed TypeScript codebases using a gradual, bottom-up approach.
+@Objectives
+- Execute seamless, incremental migrations from JavaScript to TypeScript without breaking runtime behavior or test suites.
+- Modernize legacy JavaScript syntax (ES2015+) as a foundational step to facilitate TypeScript adoption.
+- Strictly separate the act of migrating to TypeScript from architectural refactoring; prioritize adding types over fixing code smells.
+- Incrementally increase type safety using `@ts-check`, JSDoc, and `allowJs` before fully transitioning to `.ts` files.
+- Achieve a strict, fully typed codebase by enforcing `noImplicitAny` as the final milestone of the migration.
 
-## @Objectives
-- Safely upgrade legacy JavaScript code to modern ECMAScript standards before applying TypeScript.
-- Transition projects to TypeScript incrementally to maintain a working build/test pipeline at all times.
-- Provide high-quality static typing without getting distracted by architectural refactoring.
-- Reach the ultimate goal of a fully typed codebase with `noImplicitAny` enabled.
+@Guidelines
+- **Pre-Migration Cleanup**: The AI MUST perform dead code elimination and remove deprecated features before starting a TypeScript migration.
+- **Hold Off on Framework Refactors**: The AI MUST NOT perform large architectural refactors (e.g., converting jQuery to React) until the TypeScript migration is fully complete.
+- **No Refactoring During Migration**: When converting a `.js` file to `.ts`, the AI MUST NOT fix bad designs, code smells, or architectural flaws. The AI MUST add a `// TODO` comment or use an expedient type assertion (`as any`, `as Type`) or `@ts-expect-error` to push past the issue and maintain migration momentum.
+- **Modern Syntax Enforcement**: When writing or modernizing JavaScript/TypeScript, the AI MUST use:
+  - ECMAScript modules (`import`/`export`) instead of CommonJS (`require`), AMD, or namespaces.
+  - ES2015 `class` syntax instead of prototype-based object models.
+  - `let` and `const` instead of `var`.
+  - `for-of` loops or array methods (`map`, `filter`) instead of C-style `for(;;)` loops.
+  - `async` and `await` instead of callbacks or raw Promises.
+  - Arrow functions instead of function expressions to preserve `this` context.
+  - Default parameter values in the function signature.
+  - Compact object literals and destructuring assignments.
+  - `Map` and `Set` instead of plain objects for associative arrays.
+  - Optional chaining (`?.`) and nullish coalescing (`??`).
+- **Strict Mode**: The AI MUST NOT add `"use strict"` to TypeScript files, as TypeScript naturally enforces strict mode and emits it during module compilation.
+- **Experimenting with Types (@ts-check)**: When directed to experiment with typing in a `.js` file, the AI MUST add `// @ts-check` to the top of the file.
+- **Ambient Globals**: The AI MUST declare undeclared globals identified by `@ts-check` using `let`/`const` or by creating a `types.d.ts` file containing `declare let globalName: Type;`.
+- **Third-Party Types**: The AI MUST install `@types/package-name` for unknown libraries as `devDependencies` to ensure proper type checking.
+- **JSDoc Type Assertions**: To assert a type in a `.js` file using `@ts-check`, the AI MUST use the exact JSDoc syntax: `/** @type {TargetType} */(expression)` including the wrapping parentheses.
+- **JSDoc to TS Conversion**: When converting a `.js` file with JSDoc to `.ts`, the AI MUST translate the JSDoc types into inline TypeScript annotations and subsequently delete the JSDoc type tags to avoid redundancy.
+- **Undeclared Class Members**: When migrating classes to TypeScript, the AI MUST explicitly declare all class properties and their types before the constructor.
+- **Values with Changing Types**: If an object is built piecemeal causing type errors, the AI MUST either build the object all at once, or use an expedient type assertion (`const obj = {} as TargetType;`) and leave a TODO to refactor later.
 
-## @Constraints & Guidelines
-- **Strictly No Scope Creep:** DO NOT perform architectural, structural, or logic refactoring while migrating to TypeScript. If you encounter bad design patterns or code smells, leave a `// TODO` comment or suggest filing a bug, but focus solely on getting the types working.
-- **Enforce Modern JS:** Always rewrite legacy JavaScript constructs to modern standards:
-  - Use ECMAScript modules (`import`/`export`) instead of CommonJS (`require`/`module.exports`).
-  - Use ES2015 `class` syntax instead of prototype-based inheritance.
-  - Use `let` and `const` instead of `var`.
-  - Use `async`/`await` instead of raw Promises or callbacks.
-  - Use compact object literals, destructuring, optional chaining (`?.`), and nullish coalescing (`??`).
-  - Do not add `"use strict"` (TypeScript handles this automatically in module mode).
-- **Class Member Declarations:** When converting a `.js` class to a `.ts` class, you MUST explicitly declare all class properties/members before the constructor.
-- **Handling Changing Types:** If a value changes types during initialization (e.g., an object built piecemeal), either build the object all at once or use an expedient type assertion to keep the migration moving. 
-- **Type Safety Goal:** The migration is NEVER considered complete if `noImplicitAny` is disabled.
+@Workflow
+1. **Preparation**: Eliminate dead code, update third-party dependencies, and modernize JS syntax (Prototypes to Classes, CommonJS to ES Modules).
+2. **Build Integration**: Enable the `allowJs` compiler option in `tsconfig.json`. Configure the build chain (webpack `ts-loader`, `ts-node`, `ts-jest`, etc.) to process both `.ts` and `.js` files. Ensure all existing tests pass.
+3. **External Dependencies**: Identify third-party dependencies and external API calls. Install `@types/` packages for libraries and write explicit type interfaces for external API responses.
+4. **Graph Analysis**: Perform a topological sort of the project's dependency graph. Identify leaf nodes (utility modules with no internal imports).
+5. **Bottom-Up Migration**: Iterate through the dependency graph from bottom (leaf nodes) to top (entry points). For each file:
+    a. Rename `.js` to `.ts`.
+    b. Declare missing class members.
+    c. Convert JSDoc annotations to TS annotations.
+    d. Use expedient type assertions (`as any`) or `@ts-expect-error` to bypass poorly designed code without refactoring it.
+6. **Migrate Tests**: Migrate unit tests last. Verify that runtime behavior remains completely unchanged.
+7. **Strictness Enforcement**: Once all files are converted, enable `noImplicitAny` in the local `tsconfig.json`. Iteratively fix all surfaced implicit `any` errors going back up the dependency graph. Do not consider the migration complete until `noImplicitAny` generates zero errors.
 
-## @Workflow
-When tasked with migrating a JavaScript codebase or file to TypeScript, follow these steps strictly in order:
+@Examples (Do's and Don'ts)
 
-1. **Modernize the JavaScript:**
-   - Before renaming extensions to `.ts`, update the target files to use modern ECMAScript features (ESM imports, classes, arrow functions, destructuring).
-   
-2. **Experiment & Assess (Optional but recommended for large files):**
-   - Add `// @ts-check` to the top of the `.js` file to uncover undeclared globals, unknown libraries, and DOM issues.
-   - Use JSDoc comments to test type flow before officially converting the file.
+**Modernizing Classes**
+- [DO]:
+```typescript
+class Person {
+  constructor(first: string, last: string) {
+    this.first = first;
+    this.last = last;
+  }
+  getName() {
+    return `${this.first} ${this.last}`;
+  }
+}
+```
+- [DON'T]:
+```javascript
+function Person(first, last) {
+  this.first = first;
+  this.last = last;
+}
+Person.prototype.getName = function() {
+  return this.first + ' ' + this.last;
+}
+```
 
-3. **Prepare the Build Environment:**
-   - Ensure the user's `tsconfig.json` has `"allowJs": true` enabled. This allows TypeScript and JavaScript to coexist, enabling a file-by-file migration.
-   - Verify that the test runner and build pipeline (e.g., webpack, ts-node, Jest) are configured to handle mixed `.ts` and `.js` files.
+**JSDoc Type Assertions in JavaScript (@ts-check)**
+- [DO]:
+```javascript
+// @ts-check
+const ageEl = /** @type {HTMLInputElement} */(document.getElementById('age'));
+ageEl.value = '12';
+```
+- [DON'T]:
+```javascript
+// @ts-check
+const ageEl = document.getElementById('age');
+ageEl.value = '12'; // Error: Property 'value' does not exist on type 'HTMLElement'
+```
 
-4. **Resolve Third-Party & API Dependencies:**
-   - Install `@types/` packages for all third-party libraries used in the codebase.
-   - Add explicit type declarations for external API responses before migrating internal business logic.
+**Class Member Declarations in TypeScript**
+- [DO]:
+```typescript
+class Greeting {
+  greeting: string;
+  name: string;
 
-5. **Migrate Bottom-Up:**
-   - Convert modules from `.js` to `.ts` starting at the bottom of the dependency graph (leaf nodes, typically utility files or constants) and moving upwards toward the application root.
-   - If migrating JSDoc-typed files, convert the JSDoc annotations directly into TypeScript inline type annotations and remove the redundant JSDoc types.
+  constructor(name: string) {
+    this.greeting = 'Hello';
+    this.name = name;
+  }
+}
+```
+- [DON'T]:
+```typescript
+class Greeting {
+  constructor(name: string) {
+    this.greeting = 'Hello'; // Error: Property 'greeting' does not exist
+    this.name = name; // Error: Property 'name' does not exist
+  }
+}
+```
 
-6. **Migrate Tests Last:**
-   - Only convert test files to TypeScript after the production code they depend on has been fully migrated.
-
-7. **Enable Strict Mode (`noImplicitAny`):**
-   - Once all files are converted to `.ts`, instruct the user to enable `"noImplicitAny": true` in `tsconfig.json`.
-   - Resolve all resulting implicit `any` errors explicitly by adding proper type annotations. Do not consider the job finished until these errors are at zero.
+**Handling Poorly Designed Code During Migration**
+- [DO]:
+```typescript
+interface State {
+  name: string;
+  capital: string;
+}
+// Expedient assertion to maintain migration momentum without architectural refactoring
+const state = {} as State; 
+state.name = 'New York';
+state.capital = 'Albany';
+// TODO: Refactor to build object all at once
+```
+- [DON'T]:
+```typescript
+const state = {};
+state.name = 'New York'; // Error: Property 'name' does not exist on type '{}'
+// (Stopping the migration to embark on a massive architectural refactor to fix this pattern)
+```
