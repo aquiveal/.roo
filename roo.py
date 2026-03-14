@@ -144,7 +144,7 @@ def create_symlink(src_str, dst_str, is_elevated=False, is_update=False):
         # Key is destination path (relative to repo root if possible)
         # We'll normalize to forward slash relative paths
         try:
-            repo_root = Path.cwd()
+            repo_root = get_git_root()
             dst_rel = dest_path.relative_to(repo_root).as_posix()
         except ValueError:
             dst_rel = dest_path.as_posix()
@@ -293,7 +293,7 @@ def handle_add(src, dst, is_elevated):
             # Save remote metadata
             config = load_modules()
             try:
-                repo_root = Path.cwd()
+                repo_root = get_git_root()
                 dst_rel = Path(dst).resolve().relative_to(repo_root).as_posix()
             except ValueError:
                 dst_rel = Path(dst).resolve().as_posix()
@@ -318,7 +318,7 @@ def handle_add(src, dst, is_elevated):
                 # Save remote metadata to .roomodules as well
                 config = load_modules()
                 try:
-                    repo_root = Path.cwd()
+                    repo_root = get_git_root()
                     dst_rel = Path(dst).resolve().relative_to(repo_root).as_posix()
                 except ValueError:
                     dst_rel = Path(dst).resolve().as_posix()
@@ -344,7 +344,7 @@ def handle_submodule_update(is_elevated):
         return
         
     logger.info(f"Updating submodules from {ROOMODULES_FILE}...")
-    repo_root = Path.cwd()
+    repo_root = get_git_root()
     
     for section in config.sections():
         if not section.startswith('submodule "'):
@@ -478,3 +478,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
