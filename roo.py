@@ -104,7 +104,7 @@ def ensure_ignored(path_rel):
         f.writelines(lines)
 
 def create_symlink(src_str, dst_str, is_elevated=False, is_update=False):
-    source_path = Path(src_str).resolve()
+    source_path = Path(src_str).absolute()
     dest_path = Path(dst_str).absolute()
 
     if not source_path.exists():
@@ -294,9 +294,9 @@ def handle_add(src, dst, is_elevated):
             config = load_modules()
             try:
                 repo_root = get_git_root()
-                dst_rel = Path(dst).resolve().relative_to(repo_root).as_posix()
+                dst_rel = Path(dst).absolute().relative_to(repo_root).as_posix()
             except ValueError:
-                dst_rel = Path(dst).resolve().as_posix()
+                dst_rel = Path(dst).absolute().as_posix()
                 
             # Ensure the destination folder is ignored by Git
             ensure_ignored(dst_rel)
@@ -454,9 +454,9 @@ def main():
             if not is_github_url(src):
                 src_path = Path(src)
                 if not src_path.is_absolute():
-                    src_abs = (original_cwd / src).resolve()
+                    src_abs = (original_cwd / src).absolute()
                 else:
-                    src_abs = src_path.resolve()
+                    src_abs = src_path.absolute()
                 try:
                     src = os.path.relpath(src_abs, git_root).replace('\\', '/')
                 except ValueError:
@@ -464,9 +464,9 @@ def main():
                         
             dst_path = Path(dst)
             if not dst_path.is_absolute():
-                dst_abs = (original_cwd / dst).resolve()
+                dst_abs = (original_cwd / dst).absolute()
             else:
-                dst_abs = dst_path.resolve()
+                dst_abs = dst_path.absolute()
             try:
                 dst = os.path.relpath(dst_abs, git_root).replace('\\', '/')
             except ValueError:
