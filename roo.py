@@ -11,9 +11,6 @@ import shutil
 from pathlib import Path
 import argparse
 
-# Save original working directory before any chdir
-ORIGINAL_CWD = os.getcwd()
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
@@ -28,14 +25,32 @@ def is_admin():
     except:
         return False
 
-def elevate_and_run(args):
+def elevate_and_run(args, original_cwd=None):
     logger.info("Requesting Administrator privileges...")
     script_path = os.path.abspath(sys.argv[0])
     
+    # We pass the absolute path for src and dst so the elevated process 
+    # doesn't misinterpret them if it starts in a different working directory.
+    # The elevated process will chdir to git root anyway, but the original args
+    # were relative to original_cwd. We will reconstruct original_cwd in elevated process
+    # if needed, but it's simpler to just let the main loop handle absolute paths
+    # which we will pass here. Wait, actually we can just pass the args as is, 
+    # but since elevate_and_run is called from create_symlink after os.chdir(git_root)
+    # the sys.argv[1:] args might be relative to original_cwd, but the elevated
+    # process will use them as relative to whatever its cwd is (usually System32).
+    # This is the bug!
+    
     # Reconstruct arguments but add --elevated
+    # Wait, we need to pass the original_cwd to the elevated process so it can resolve properly.
+    # Actually, we can just pass --original-cwd <cwd>
+    if original_cwd:
+        params = f'"{script_path}" ' + " ".join([f'"{arg}"' for arg in args]) + f' --elevated --original-cwd "{original_cwd}"'
+    else:
+        params = f'"{script_path}" ' + " ".join([f'"{arg}"' for arg in args]) + ' --elevated'
+
     params = f'"{script_path}" ' + " ".join([f'"{arg}"' for arg in args]) + ' --elevated'
     
-    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, ORIGINAL_CWD, 1)
+    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
     
     if int(ret) > 32:
         logger.info("Elevation requested successfully. Please check the new Administrator window.")
@@ -103,7 +118,7 @@ def ensure_ignored(path_rel):
     with open(gitignore_path, 'w') as f:
         f.writelines(lines)
 
-def create_symlink(src_str, dst_str, is_elevated=False, is_update=False):
+def create_symlink(src_str, dst_str, is_elevated=False, is_update=False, original_cwd_for_elevation=None):
     source_path = Path(src_str).resolve()
     dest_path = Path(dst_str).absolute()
 
@@ -198,8 +213,8 @@ def create_symlink(src_str, dst_str, is_elevated=False, is_update=False):
             else:
                 logger.warning(f"Privilege error detected: {e}")
                 # Pass sys.argv[1:] excluding --elevated if it was there
-                original_args = [arg for arg in sys.argv[1:] if arg != "--elevated"]
-                elevate_and_run(original_args)
+                original_args = [arg for arg in sys.argv[1:] if arg not in ("--elevated", "--original-cwd", original_cwd_for_elevation)]
+                elevate_and_run(original_args, original_cwd=original_cwd_for_elevation)
                 return
         else:
             logger.error(f"Failed to create symlink: {e}")
@@ -281,7 +296,7 @@ def download_github_folder(url, dest_str):
             except Exception as e:
                 logger.warning(f"Could not fully clean up temporary directory {tmp_dir}: {e}")
 
-def handle_add(src, dst, is_elevated):
+def handle_add(src, dst, is_elevated, original_cwd=None):
     if not src or not dst:
         logger.error("Both source and destination paths are required for 'submodule add'")
         sys.exit(1)
@@ -335,7 +350,7 @@ def handle_add(src, dst, is_elevated):
                 logger.error(f"Failed to add git submodule: {e}")
                 sys.exit(1)
     else:
-        create_symlink(src, dst, is_elevated)
+        create_symlink(src, dst, is_elevated, original_cwd_for_elevation=original_cwd)
 
 def handle_submodule_update(is_elevated):
     config = load_modules()
@@ -421,8 +436,14 @@ def get_git_root():
 
 def main():
     is_elevated = "--elevated" in sys.argv
+    original_cwd = None
     if is_elevated:
         sys.argv.remove("--elevated")
+        if "--original-cwd" in sys.argv:
+            idx = sys.argv.index("--original-cwd")
+            original_cwd = sys.argv[idx + 1]
+            sys.argv.pop(idx) # remove --original-cwd
+            sys.argv.pop(idx) # remove the path value
         
     parser = argparse.ArgumentParser(description="roo module manager")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -442,7 +463,10 @@ def main():
     args = parser.parse_args()
 
     if args.command == "submodule":
-        original_cwd = Path.cwd()
+        if not original_cwd:
+            original_cwd = str(Path.cwd())
+            
+        original_cwd_path = Path(original_cwd)
         git_root = get_git_root()
         os.chdir(git_root)
         logger.info(f"Operating from git repository root: {git_root}")
@@ -454,7 +478,7 @@ def main():
             if not is_github_url(src):
                 src_path = Path(src)
                 if not src_path.is_absolute():
-                    src_abs = (original_cwd / src).resolve()
+                    src_abs = (original_cwd_path / src).resolve()
                     try:
                         src = os.path.relpath(src_abs, git_root).replace('\\', '/')
                     except ValueError:
@@ -462,13 +486,13 @@ def main():
                         
             dst_path = Path(dst)
             if not dst_path.is_absolute():
-                dst_abs = (original_cwd / dst).resolve()
+                dst_abs = (original_cwd_path / dst).resolve()
                 try:
                     dst = os.path.relpath(dst_abs, git_root).replace('\\', '/')
                 except ValueError:
                     dst = str(dst_abs).replace('\\', '/')
 
-            handle_add(src, dst, is_elevated)
+            handle_add(src, dst, is_elevated, original_cwd=original_cwd)
         elif args.action == "update":
             handle_submodule_update(is_elevated)
         
