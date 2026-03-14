@@ -11,6 +11,9 @@ import shutil
 from pathlib import Path
 import argparse
 
+# Save original working directory before any chdir
+ORIGINAL_CWD = os.getcwd()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
@@ -32,7 +35,7 @@ def elevate_and_run(args):
     # Reconstruct arguments but add --elevated
     params = f'"{script_path}" ' + " ".join([f'"{arg}"' for arg in args]) + ' --elevated'
     
-    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
+    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, ORIGINAL_CWD, 1)
     
     if int(ret) > 32:
         logger.info("Elevation requested successfully. Please check the new Administrator window.")
