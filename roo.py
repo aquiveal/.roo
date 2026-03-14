@@ -455,18 +455,22 @@ def main():
                 src_path = Path(src)
                 if not src_path.is_absolute():
                     src_abs = (original_cwd / src).resolve()
-                    try:
-                        src = os.path.relpath(src_abs, git_root).replace('\\', '/')
-                    except ValueError:
-                        src = str(src_abs).replace('\\', '/')
+                else:
+                    src_abs = src_path.resolve()
+                try:
+                    src = os.path.relpath(src_abs, git_root).replace('\\', '/')
+                except ValueError:
+                    src = str(src_abs).replace('\\', '/')
                         
             dst_path = Path(dst)
             if not dst_path.is_absolute():
                 dst_abs = (original_cwd / dst).resolve()
-                try:
-                    dst = os.path.relpath(dst_abs, git_root).replace('\\', '/')
-                except ValueError:
-                    dst = str(dst_abs).replace('\\', '/')
+            else:
+                dst_abs = dst_path.resolve()
+            try:
+                dst = os.path.relpath(dst_abs, git_root).replace('\\', '/')
+            except ValueError:
+                dst = str(dst_abs).replace('\\', '/')
 
             handle_add(src, dst, is_elevated)
         elif args.action == "update":
