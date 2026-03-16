@@ -215,5 +215,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Roo
+objects
+
 # Roo Modules
 rules/node/typescript
