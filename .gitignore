@@ -220,3 +220,5 @@ objects
 
 # Roo Modules
 rules/node/typescript
+vendor/framework/medusa
+vendor/framework/payload

@@ -4,3 +4,12 @@
 [submodule "rules/terraform/terraform-best-practices"]
 	path = rules/terraform/terraform-best-practices
 	url = https://github.com/antonbabenko/terraform-best-practices
+[submodule "../../../../../vendor/framework/payload"]
+	path = ../../../../../vendor/framework/payload
+	url = https://github.com/payloadcms/payload/tree/main/docs
+[submodule "vendor/framework/payload"]
+	path = vendor/framework/payload
+	url = https://github.com/payloadcms/payload/tree/main/docs
+[submodule "vendor/framework/medusa"]
+	path = vendor/framework/medusa
+	url = https://github.com/medusajs/medusa/tree/develop/www/apps/book/app/learn
